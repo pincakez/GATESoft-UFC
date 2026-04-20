@@ -6,6 +6,8 @@
 </p>
 
 # GATESOFT — Ultimate Files Converter
+**Version: ALPHA 0.4 Pre-Release**
+
 
 [![GitHub Repository](https://img.shields.io/badge/GitHub-Repository-181717?logo=github)](https://github.com/pincakez/GATESoft-UFC)
 [![GitHub Stars](https://img.shields.io/github/stars/pincakez/GATESoft-UFC?style=social)](https://github.com/pincakez/GATESoft-UFC)
@@ -31,7 +33,7 @@
 ## 🗂 Project Structure
 
 ```
-Z/
+GATESoft-UFC/
 ├── index.html               ← Main entry point (clean, modular)
 ├── css/
 │   └── styles.css           ← All styles (light & dark themes, model selector)
@@ -254,4 +256,4 @@ For commercial use or licensing inquiries, please contact the repository owner.
 
 ---
 
-*Last updated: 2026-04-20 23:25:00*
+*Last updated: 2026-04-21 01:46:00*
