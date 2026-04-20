@@ -9,6 +9,9 @@
   <!-- External Libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://unpkg.com/docx@8.2.3/build/index.umd.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
   <!-- Google Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&family=Noto+Naskh+Arabic:wght@400;700&display=swap" rel="stylesheet"/>
@@ -24,8 +27,9 @@
     <div class="brand">
       <!-- Logo loaded from assets folder -->
       <img class="brand-logo" id="brandLogo"
-        src="asstes/500nonblack.png"
+        src="assets/500nonblack.png"
         alt="GATESOFT Logo"/>
+
       <div class="brand-text">
         <div class="brand-name">
           <span class="brand-green">GATE</span><span class="brand-soft">SOFT</span>
@@ -139,11 +143,11 @@
           ondragleave="onDragLeave()"
           ondrop="onDrop(event)">
           <span class="upload-ico">📄</span>
-          <div class="upload-title">Drop your PDF here</div>
-          <div class="upload-sub">or click to browse</div>
+          <div class="upload-title">Drop your file here</div>
+          <div class="upload-sub">PDF, DOCX, ODT, TXT, MD, PNG, JPG</div>
           <span class="upload-cap">MAX 100 MB</span>
         </div>
-        <input type="file" id="fileInput" accept=".pdf" style="display:none" onchange="onFileSelect(event)"/>
+        <input type="file" id="fileInput" accept=".pdf,.docx,.odt,.txt,.md,.png,.jpg,.jpeg" style="display:none" onchange="onFileSelect(event)"/>
         <div class="file-chip" id="fileChip">
           <div class="chip-icon">PDF</div>
           <div class="chip-info">
@@ -244,25 +248,37 @@
 
         <div class="divider"></div>
 
+        <!-- ALIGNMENT -->
+        <div class="field-label" style="margin-bottom:0">OUTPUT ALIGNMENT</div>
+        <div id="alignNote" style="font-size:11px;color:var(--ink4);margin-top:4px;margin-bottom:10px">Control word direction and page margins (Best for Arabic vs English)</div>
+        <div class="dpi-grid">
+          <div class="dpi-btn align-btn sel" onclick="selAlign(this,'auto')">AUTO<span class="d-sub">Default</span></div>
+          <div class="dpi-btn align-btn" onclick="selAlign(this,'rtl')">RTL<span class="d-sub">Right to Left</span></div>
+          <div class="dpi-btn align-btn" onclick="selAlign(this,'ltr')">LTR<span class="d-sub">Left to Right</span></div>
+          <div class="dpi-btn align-btn" onclick="selAlign(this,'center')">CENTER<span class="d-sub">Middle</span></div>
+        </div>
+
+        <div class="divider" id="thinkDivider"></div>
+
         <!-- THINKING LEVEL -->
         <div id="thinkSection">
           <div class="field-label" style="margin-bottom:0">THINKING LEVEL</div>
           <div id="thinkNote" style="font-size:11px;color:var(--ink4);margin-top:4px;margin-bottom:0">Higher = more accurate on complex / handwritten pages</div>
           <div class="think-grid">
             <div class="think-btn sel" id="tbtn-none" onclick="selThink(this,'none')">
-              <span class="t-ico">⚡</span>OFF
+              <span class="t-ico">⚡</span>MINIMAL
               <span class="think-rec" id="trec-none" style="display:none">REC</span>
             </div>
             <div class="think-btn" id="tbtn-low" onclick="selThink(this,'low')">
-              <span class="t-ico">🔍</span>LIGHT
+              <span class="t-ico">🔍</span>LOW
               <span class="think-rec" id="trec-low" style="display:none">REC</span>
             </div>
             <div class="think-btn" id="tbtn-medium" onclick="selThink(this,'medium')">
-              <span class="t-ico">🧠</span>STANDARD
+              <span class="t-ico">🧠</span>MEDIUM
               <span class="think-rec" id="trec-medium" style="display:none">REC</span>
             </div>
             <div class="think-btn" id="tbtn-high" onclick="selThink(this,'high')">
-              <span class="t-ico">🔬</span>DEEP
+              <span class="t-ico">🔬</span>HIGH
               <span class="think-rec" id="trec-high" style="display:none">REC</span>
             </div>
           </div>
@@ -285,6 +301,13 @@
             <div class="enhance-info">
               <div class="enhance-title">Grammar Correction</div>
               <div class="enhance-desc">Fix grammar and spelling without changing phrasing</div>
+            </div>
+          </div>
+          <div class="enhance-opt" id="optAutoAnswer" onclick="toggleEnhance('autoAnswer')">
+            <div class="enhance-check" id="chkAutoAnswer"></div>
+            <div class="enhance-info">
+              <div class="enhance-title">Questions Auto Answer</div>
+              <div class="enhance-desc">Identify and solve/answer questions found in the document</div>
             </div>
           </div>
         </div>

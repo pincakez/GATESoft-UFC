@@ -10,20 +10,21 @@
 [![GitHub Repository](https://img.shields.io/badge/GitHub-Repository-181717?logo=github)](https://github.com/pincakez/GATESoft-UFC)
 [![GitHub Stars](https://img.shields.io/github/stars/pincakez/GATESoft-UFC?style=social)](https://github.com/pincakez/GATESoft-UFC)
 
-> **AI-powered PDF conversion tool** supporting DOCX, ODT, TXT, Markdown, PNG, JPG, and PDF output. Optimized for Arabic (RTL) and multilingual documents with full table and heading reconstruction. Uses Google Gemini API with intelligent rate limiting and error recovery.
+> **Universal AI-powered file conversion engine**. Natively supports ingesting and exporting between PDF, DOCX, ODT, TXT, Markdown, PNG, and JPG. Optimized for Arabic (RTL) and multilingual documents with full table, heading reconstruction, and AI-driven Rephrasing/Grammar enhancement. Powered by Google Gemini API with intelligent rate limiting and instantaneous text-to-image rendering.
 
 ---
 
 ## ✨ Features
 
-- **Multi-format Output**: Convert PDFs to DOCX, ODT, TXT, Markdown, PNG, JPG, and reconstructed PDF
-- **AI-Powered Extraction**: Google Gemini API analyzes document structure, tables, and content
-- **Arabic & RTL Support**: Full Right-to-Left text handling with proper font rendering
-- **Intelligent Rate Limiting**: Automatic delay calculation and exponential backoff for API quotas
-- **Error Recovery**: Auto-retry on rate limits (429), server errors (503), and repetition loops
-- **DPI/Quality Modes**: Choose between Draft (72 DPI), Balanced (100 DPI), and Quality (150 DPI)
-- **Thinking Modes**: Optional reasoning levels (OFF, LIGHT, STANDARD, DEEP) on supported models
-- **Text Enhancement**: Optional rephrasing and grammar correction
+- **Universal Any-to-Any Converter**: Input **and** Output in PDF, DOCX, ODT, TXT, MD, PNG, and JPG.
+- **AI-Powered Semantic Extraction**: Google Gemini API analyzes document structures, handwriting, tables, and nested content.
+- **Text-to-Image AI Rendering**: Enhance your grammar/vocabulary and immediately export the reconstructed elegant document as a new PNG/JPG.
+- **Native Browser Processing**: Parses Word (Mammoth.js) and OpenDocument (JSZip) files locally with zero backend uploads!
+- **Arabic & RTL Support**: Full Right-to-Left text handling with bi-directional (`bidi`) paragraph attributes.
+- **Intelligent Error Recovery**: Auto-retry on rate limits (429), server overload (503), with dynamic repetition loop detection.
+- **Thinking Modes & Enhancements**: Trade speed for accuracy using reasoning delays, Rephrase, and Grammar correction.
+- **Questions Auto Answer**: Built-in classroom intelligence that identifies and solves questions within documents.
+- **Precision Alignment**: Global control over text direction (AUTO, RTL, LTR, CENTER) for perfect semantic output.
 
 ---
 
@@ -38,11 +39,8 @@ Z/
 │   └── app.js               ← All logic, model configs, Gemini API integration
 ├── assets/
 │   └── 500nonblack.png      ← GATESOFT logo
-├── gatesoft-ultimate.html   ← Original monolithic file (backup only)
 └── README.md                ← This file
 ```
-
-> **Use `index.html`** — the original `gatesoft-ultimate.html` is kept as a reference backup only.
 
 ---
 
@@ -96,13 +94,20 @@ models/gemini-2.5-flash-lite-preview-06-17 is not found for API version v1beta
 ```
 The app now defaults to `gemini-3.1-flash-lite-preview` and lets you switch between all supported free-tier models.
 
-### 🖼️ UI & Logo Enhancements
-- Added dynamic logo swapping for Dark/Light mode (`500nonwhite.png` & `500nonblack.png`).
-- Removed inline base64 images entirely.
-- Added rich processing animations: shaking, flashing, sliding, and CSS UI improvements so the conversion process feels kinetic and alive.
+### 🔄 UI & UX Polishing
+- Completely rebuilt the Processing Logs UI for readable wrap-around dynamic status messages.
+- Added smooth window auto-scrolling on execution.
+- Wired the **Stop Conversion** button to an `AbortController` to instantly sever live LLM network requests!
+- Fluid CSS animations prevent stiff transitions and bring the queue rendering to life.
+
+### 🌐 Universal Extractor & Render Pipeline
+- Shifted the architecture from "PDF to X" to **"Any to Any"**.
+- Input vectors like DOCX/ODT are parsed locally into semantic strings, fed directly to Gemini via text parameters (bypassing heavy image rasterization tokens), and natively reassembled.
+- Exporting AI-processed text direct to PNG uses a lightweight `html2canvas` render engine.
 
 ### 📁 Externalized Files
 CSS → `css/styles.css` · JavaScript → `js/app.js` · Logos → `assets/`
+
 
 ---
 
@@ -127,19 +132,17 @@ Step 2 in the app lets you choose your model. Each model gets a **calculated saf
 
 ---
 
-## 📄 Supported Output Formats
+## 📄 Supported Input & Output Formats
 
-| Format | Description |
+| Format | Description (Input & Output Support) |
 |--------|-------------|
 | **DOCX** | Microsoft Word, RTL-aware, Arabic fonts, full table support |
 | **ODT** | OpenDocument Text (LibreOffice) |
-| **TXT** | Plain text, no formatting |
+| **TXT** | Plain text, minimal formatting |
 | **MD** | Structured Markdown with headings and tables |
-| **MD·AI** | Clean Markdown optimized for AI/LLM processing |
-| **PNG** | Page-by-page image export *(no API call)* |
-| **JPG** | Page-by-page JPEG export *(no API call)* |
-| **PDF (Split)** | Splits PDF pages into individual PNG images *(no API call)* |
-| **PDF (Reconstruct)** | AI extracts content → HTML → print to PDF |
+| **PNG / JPG** | Renders documents to image. If Enhancements are ON, uses AI to create custom graphic outputs. |
+| **PDF (Split)** | Slices PDF pages into rasterized individual Image files (no AI call) |
+| **PDF (Reconstruct)** | AI deeply extracts content → Markdown → HTML → print to PDF pipeline |
 
 ---
 
@@ -162,9 +165,18 @@ Some models (like 2.5 Flash-Lite) do NOT support thinking. When selected, thinki
 | STANDARD | Careful analysis of ambiguous content (Great for 2.5 Flash & complex Arabic) |
 | DEEP | Deep spatial analysis — handwriting, complex tables, noisy scans |
 
+### Output Alignment
+| Mode | Description |
+|------|-------------|
+| **AUTO** | Automatic detection based on content (defaults to RTL) |
+| **RTL** | Forces Right-to-Left alignment (Best for Arabic/Hebrew) |
+| **LTR** | Forces Left-to-Right alignment (Best for English/Latin) |
+| **CENTER** | Centers all text elements, tables, and headings |
+
 ### Text Enhancement (Optional)
 - **Rephrase** — rewrites sentences for clarity while preserving meaning
 - **Grammar Correction** — fixes spelling and grammar without rephrasing
+- **Questions Auto Answer** — AI inferrs course/subject context to identify and solve questions inside the document
 
 ---
 
@@ -181,11 +193,13 @@ Some models (like 2.5 Flash-Lite) do NOT support thinking. When selected, thinki
 
 | Library | Version | Purpose |
 |---------|---------|---------|
-| [PDF.js](https://mozilla.github.io/pdf.js/) | 3.11.174 | PDF rendering to canvas |
-| [docx.js](https://docx.js.org/) | 8.2.3 | DOCX generation |
-| [DM Sans](https://fonts.google.com/specimen/DM+Sans) | — | UI font |
-| [DM Mono](https://fonts.google.com/specimen/DM+Mono) | — | Monospace font |
-| [Noto Naskh Arabic](https://fonts.google.com/noto/specimen/Noto+Naskh+Arabic) | — | Arabic text rendering |
+| [PDF.js](https://mozilla.github.io/pdf.js/) | 3.11.174 | Displaying and rasterizing PDF inputs |
+| [Mammoth.js](https://github.com/mwilliamson/mammoth.js) | 1.9.0 | Local browser parsing of DOCX files |
+| [JSZip](https://stuk.github.io/jszip/) | 3.10.1 | Extracting internal XML from ODT files |
+| [docx.js](https://docx.js.org/) | 8.2.3 | Generating DOCX output binaries natively |
+| [html2canvas](https://html2canvas.hertzen.com/) | 1.4.1 | Rendering AI Markdown to PNG/JPG instances |
+| [DM Sans / Mono](https://fonts.google.com/) | — | System UI Typography |
+| [Noto Naskh Arabic](https://fonts.google.com/) | — | Precision Arabic Text Wrapping |
 
 ---
 
@@ -220,7 +234,7 @@ Some models (like 2.5 Flash-Lite) do NOT support thinking. When selected, thinki
 
 ### **Logo Not Showing**
 - **Issue**: Broken image icon where logo should be
-- **Fix**: Ensure the `assets/` folder exists with `500nonblack.png` and `500nonwhite.png` files (note: corrected from `asstes/`)
+- **Fix**: Ensure the `assets/` folder exists with `500nonblack.png` and `500nonwhite.png` files (note: corrected from `assets/`)
 
 ### **Dark Mode Not Switching Logo**
 - **Issue**: Logo stays the same in light/dark mode
@@ -240,4 +254,4 @@ For commercial use or licensing inquiries, please contact the repository owner.
 
 ---
 
-*Last updated: 2026-04-20 03:56:58*
+*Last updated: 2026-04-20 23:25:00*

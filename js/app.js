@@ -2,7 +2,7 @@
    GATESOFT — Ultimate Files Converter  |  js/app.js
    ===================================================================== */
 
-// ── PDF.JS ──
+// ── PDF.JS Worker ──
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
@@ -78,19 +78,28 @@ function toggleTheme() {
   document.documentElement.setAttribute('data-theme', isDark ? 'dark' : '');
   document.getElementById('themeBtn').textContent = isDark ? '☀️' : '🌙';
   const logo = document.getElementById('brandLogo');
-  if (logo) logo.src = isDark ? 'asstes/500nonwhite.png' : 'asstes/500nonblack.png';
+  if (logo) logo.src = isDark ? 'assets/500nonwhite.png' : 'assets/500nonblack.png';
 }
+
 
 // ── STATE ──
 const S = {
   file: null, pdfDoc: null, totalPages: 0,
+  inputType: null, textContent: null,
   fmt: 'docx', pdfMode: 'split',
   dpi: 150, thinking: 'none',
-  rephrase: false, grammar: false,
+  align: 'auto',
+  rephrase: false, grammar: false, autoAnswer: false,
   processing: false, cancelled: false,
   results: [], apiValid: false,
   model: 'gemini-3.1-flash-lite-preview'   // default model
 };
+
+function selAlign(el, align) {
+  document.querySelectorAll('.align-btn').forEach(b => b.classList.remove('sel'));
+  el.classList.add('sel');
+  S.align = align;
+}
 
 // ── MODEL SELECTOR ──
 function selectModel(modelId) {
@@ -127,7 +136,7 @@ function selectModel(modelId) {
       document.querySelectorAll('.think-btn').forEach(b => b.classList.remove('sel'));
       recBtn.classList.add('sel');
       S.thinking = cfg.recommendedThinking;
-      const statMap = { none:'OFF', low:'LIGHT', medium:'STANDARD', high:'DEEP' };
+      const statMap = { none:'MINIMAL', low:'LOW', medium:'MEDIUM', high:'HIGH' };
       document.getElementById('tStat').textContent = statMap[cfg.recommendedThinking] || cfg.recommendedThinking.toUpperCase();
     }
   }
@@ -144,6 +153,7 @@ function selectModel(modelId) {
 
 // ── API KEY ──
 let keyTimer = null;
+let abortController = null;
 
 function onKeyInput() {
   const val   = document.getElementById('keyInput').value.trim();
@@ -202,28 +212,61 @@ function onDrop(e) {
 function onFileSelect(e) { const f = e.target.files[0]; if (f) loadFile(f); }
 
 async function loadFile(file) {
-  if (!file.name.toLowerCase().endsWith('.pdf')) { toast('err','❌','Please upload a PDF file.'); return; }
+  const ext = file.name.split('.').pop().toLowerCase();
+  const supported = ['pdf','png','jpg','jpeg','txt','md','docx','odt'];
+  if (!supported.includes(ext)) { toast('err','❌','Unsupported file type.'); return; }
   if (file.size > 100*1024*1024) { toast('err','❌',`File too large (${fmtSize(file.size)}). Max 100 MB.`); return; }
+  
   S.file = file;
+  document.getElementById('chipName').textContent = file.name;
+  document.getElementById('fileChip').classList.add('show');
+  document.getElementById('uploadZone').classList.add('has-file');
+
   try {
-    const buf = await file.arrayBuffer();
-    S.pdfDoc  = await pdfjsLib.getDocument({ data: buf }).promise;
-    S.totalPages = S.pdfDoc.numPages;
-    document.getElementById('chipName').textContent = file.name;
-    document.getElementById('chipMeta').textContent = `${fmtSize(file.size)} · ${S.totalPages} pages`;
-    document.getElementById('fileChip').classList.add('show');
-    document.getElementById('uploadZone').classList.add('has-file');
-    document.getElementById('pgBadge').textContent  = `${S.totalPages} PAGES`;
+    if (ext === 'pdf') {
+      S.inputType = 'pdf';
+      const buf = await file.arrayBuffer();
+      S.pdfDoc  = await pdfjsLib.getDocument({ data: buf }).promise;
+      S.totalPages = S.pdfDoc.numPages;
+    } else if (['png','jpg','jpeg'].includes(ext)) {
+      S.inputType = 'image';
+      S.totalPages = 1;
+    } else if (['txt','md'].includes(ext)) {
+      S.inputType = 'text';
+      S.textContent = await file.text();
+      S.totalPages = 1;
+    } else if (ext === 'docx') {
+      S.inputType = 'text';
+      const buf = await file.arrayBuffer();
+      const result = await mammoth.extractRawText({arrayBuffer: buf});
+      S.textContent = result.value;
+      S.totalPages = 1;
+    } else if (ext === 'odt') {
+      S.inputType = 'text';
+      const zip = await JSZip.loadAsync(file);
+      const contentXml = zip.file("content.xml");
+      if (contentXml) {
+        const xml = await contentXml.async("string");
+        S.textContent = xml.replace(/<text:p[^>]*>/g, '\n').replace(/<[^>]+>/g, '');
+      } else {
+        S.textContent = "";
+      }
+      S.totalPages = 1;
+    }
+
+    document.getElementById('chipMeta').textContent = `${fmtSize(file.size)} · ${S.totalPages} item(s)`;
+    document.getElementById('pgBadge').textContent  = `${S.totalPages} ITEM(S)`;
     document.getElementById('pageTo').value          = S.totalPages;
     document.getElementById('pageFrom').max          = S.totalPages;
     document.getElementById('pageTo').max            = S.totalPages;
+    document.querySelector('.chip-icon').textContent = ext.toUpperCase();
     updateRun();
-    toast('ok','✅',`Loaded "${file.name}" — ${S.totalPages} pages`);
-  } catch(e) { toast('err','❌','Failed to read PDF. File may be corrupted.'); }
+    toast('ok','✅',`Loaded "${file.name}"`);
+  } catch(e) { toast('err','❌','Failed to read file. It may be corrupted.'); console.error(e); }
 }
 
 function removeFile() {
-  S.file = null; S.pdfDoc = null; S.totalPages = 0;
+  S.file = null; S.pdfDoc = null; S.totalPages = 0; S.inputType = null; S.textContent = null;
   document.getElementById('fileInput').value = '';
   document.getElementById('fileChip').classList.remove('show');
   document.getElementById('uploadZone').classList.remove('has-file');
@@ -245,20 +288,25 @@ function onSpliceToggle() {
 
 // ── FORMAT ──
 function selFmt(el, fmt) {
-  document.querySelectorAll('.fmt-btn').forEach(b => b.classList.remove('sel'));
+  document.querySelectorAll('.fmt-btn:not(.align-btn)').forEach(b => b.classList.remove('sel'));
   el.classList.add('sel');
   S.fmt = fmt;
   document.getElementById('pdfSub').className = 'pdf-sub' + (fmt === 'pdf' ? ' show' : '');
-  document.getElementById('aiOptionsCard').style.display =
-    (fmt === 'png' || fmt === 'jpg' || (fmt === 'pdf' && S.pdfMode === 'split')) ? 'none' : '';
+  document.getElementById('aiOptionsCard').style.display = ''; // ALWAYS show
   document.getElementById('fStat').textContent = fmt.toUpperCase();
+}
+
+function selAlign(el, align) {
+  document.querySelectorAll('.align-btn').forEach(b => b.classList.remove('sel'));
+  el.classList.add('sel');
+  S.align = align;
 }
 
 function selPdfOpt(mode) {
   S.pdfMode = mode;
   document.getElementById('pdfOptSplit').className = 'pdf-opt' + (mode === 'split' ? ' sel' : '');
   document.getElementById('pdfOptRecon').className = 'pdf-opt' + (mode === 'recon' ? ' sel' : '');
-  document.getElementById('aiOptionsCard').style.display = mode === 'split' ? 'none' : '';
+  document.getElementById('aiOptionsCard').style.display = ''; // ALWAYS show
 }
 
 // ── AI OPTIONS ──
@@ -273,22 +321,32 @@ function selThink(el, level) {
   document.querySelectorAll('.think-btn').forEach(b => b.classList.remove('sel'));
   el.classList.add('sel');
   S.thinking = level;
-  document.getElementById('tStat').textContent = level.toUpperCase();
+  const statMap = { none:'MINIMAL', low:'LOW', medium:'MEDIUM', high:'HIGH' };
+  document.getElementById('tStat').textContent = statMap[level] || level.toUpperCase();
 }
 
 function toggleEnhance(type) {
   S[type] = !S[type];
-  document.getElementById('opt' + type.charAt(0).toUpperCase() + type.slice(1))
-    .classList.toggle('sel', S[type]);
-  document.getElementById('chk' + type.charAt(0).toUpperCase() + type.slice(1))
-    .textContent = S[type] ? '✓' : '';
+  const idBase = type === 'autoAnswer' ? 'AutoAnswer' : type.charAt(0).toUpperCase() + type.slice(1);
+  document.getElementById('opt' + idBase).classList.toggle('sel', S[type]);
+  document.getElementById('chk' + idBase).textContent = S[type] ? '✓' : '';
+  
+  if (type === 'autoAnswer' && S[type]) {
+    // Recommend High thinking if auto-answer is enabled
+    if (S.thinking === 'none' || S.thinking === 'low') {
+      const hBtn = document.getElementById('tbtn-medium');
+      if (hBtn) selThink(hBtn, 'medium');
+      toast('info', '🧠', 'Recommended: Enabled Medium Thinking for better question answering.');
+    }
+  }
   updateEnhanceStat();
 }
 
 function updateEnhanceStat() {
   const parts = [];
-  if (S.rephrase) parts.push('REPHRASE');
-  if (S.grammar)  parts.push('GRAMMAR');
+  if (S.rephrase)   parts.push('REPHRASE');
+  if (S.grammar)    parts.push('GRAMMAR');
+  if (S.autoAnswer) parts.push('ANSWERS');
   document.getElementById('eStat').textContent = parts.length ? parts.join(' + ') : 'NONE';
 }
 
@@ -299,38 +357,46 @@ function updateRun() {
 
 // ── PROCESSING ──
 async function startProcessing() {
-  if (!S.file || !S.pdfDoc || !S.apiValid) return;
+  try {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    console.log("startProcessing called!");
+    if (!S.file) { alert("Missing file"); return; }
+    if (!S.apiValid) { alert("API key not valid"); return; }
+    if (S.inputType === 'pdf' && !S.pdfDoc) { alert("PDF doc missing"); return; }
 
-  const apiKey     = document.getElementById('keyInput').value.trim();
-  const fmt        = S.fmt;
-  const isImg      = fmt === 'png' || fmt === 'jpg';
-  const isPdfSplit = fmt === 'pdf' && S.pdfMode === 'split';
+    if (abortController) abortController.abort();
+    abortController = new AbortController();
 
-  const rangeOn = document.getElementById('rangeToggle').checked;
-  let from = rangeOn ? parseInt(document.getElementById('pageFrom').value) : 1;
-  let to   = rangeOn ? parseInt(document.getElementById('pageTo').value)   : S.totalPages;
-  from = Math.max(1, Math.min(from, S.totalPages));
-  to   = Math.max(from, Math.min(to, S.totalPages));
+    const apiKey     = document.getElementById('keyInput').value.trim();
+    const fmt        = S.fmt;
+    const isImg      = fmt === 'png' || fmt === 'jpg';
+    const isPdfSplit = fmt === 'pdf' && S.pdfMode === 'split';
 
-  const spliceOn = document.getElementById('spliceToggle').checked;
-  const spliceN  = spliceOn ? Math.max(1, parseInt(document.getElementById('spliceEvery').value)||5) : 0;
+    const rangeOn = document.getElementById('rangeToggle').checked;
+    let from = rangeOn ? parseInt(document.getElementById('pageFrom').value) : 1;
+    let to   = rangeOn ? parseInt(document.getElementById('pageTo').value)   : S.totalPages;
+    from = Math.max(1, Math.min(from, S.totalPages || 1));
+    to   = Math.max(from, Math.min(to, S.totalPages || 1));
 
-  // Get delay for the selected model
-  const modelCfg  = MODEL_CONFIGS[S.model];
-  const pageDelay = modelCfg ? modelCfg.delay : 5000;
+    const spliceOn = document.getElementById('spliceToggle').checked;
+    const spliceN  = spliceOn ? Math.max(1, parseInt(document.getElementById('spliceEvery').value)||5) : 0;
 
-  S.processing = true; S.cancelled = false; S.results = [];
-  document.getElementById('btnRun').disabled = true;
-  document.getElementById('btnStop').style.display = 'block';
-  document.getElementById('resultsCard').style.display = 'none';
-  document.getElementById('resultsList').innerHTML = '';
+    // Get delay for the selected model
+    const modelCfg  = MODEL_CONFIGS[S.model];
+    const pageDelay = modelCfg ? modelCfg.delay : 5000;
 
-  renderLog();
+    S.processing = true; S.cancelled = false; S.results = [];
+    document.getElementById('btnRun').disabled = true;
+    document.getElementById('btnStop').style.display = 'block';
+    document.getElementById('resultsCard').style.display = 'none';
+    document.getElementById('resultsList').innerHTML = '';
 
-  const pages  = [];
-  for (let p = from; p <= to; p++) pages.push(p);
-  const groups = spliceOn ? chunkArr(pages, spliceN) : [pages];
-  const total  = pages.length;
+    renderLog();
+
+    const pages  = [];
+    for (let p = from; p <= to; p++) pages.push(p);
+    const groups = spliceOn ? chunkArr(pages, spliceN) : [pages];
+    const total  = pages.length;
   let done     = 0;
 
   for (let gi = 0; gi < groups.length; gi++) {
@@ -345,20 +411,60 @@ async function startProcessing() {
       addLog(pg, 'proc', '🔄 Rendering page...');
 
       try {
-        const canvas = await renderPage(pg, S.dpi);
+        let b64 = null;
+        let textInput = null;
 
-        if (isImg || isPdfSplit) {
-          const mime   = fmt === 'jpg' ? 'image/jpeg' : 'image/png';
-          const dataUrl = canvas.toDataURL(mime, 0.88);
-          imgs.push({ pg, dataUrl, fmt: isImg ? fmt : 'png' });
-          updateLog(pg, 'ok', '✅ Page rendered');
-        } else {
-          const b64 = canvas.toDataURL('image/jpeg', IMAGE_QUALITY).split(',')[1];
+        // Calculate if we need AI.
+        // Cases where we DON'T need AI:
+        // 1. PDF input, user wants Split output (isPdfSplit is true)
+        // 2. PDF input, user wants PNG/JPG output, AND neither rephrase nor grammar are toggled.
+        // 3. Image input, user wants PNG/JPG output, AND neither rephrase nor grammar are toggled.
+        let needsAi = true;
+        if (isPdfSplit) needsAi = false;
+        if (isImg && !S.rephrase && !S.grammar && (S.inputType === 'pdf' || S.inputType === 'image')) needsAi = false;
+
+        if (S.inputType === 'pdf') {
+          const canvas = await renderPage(pg, S.dpi);
+          if (!needsAi) {
+            // Direct pass-through
+            const mime   = fmt === 'jpg' ? 'image/jpeg' : 'image/png';
+            const dataUrl = canvas.toDataURL(mime, 0.88);
+            imgs.push({ pg, dataUrl, fmt: isImg ? fmt : 'png' });
+            updateLog(pg, 'ok', '✅ Page rendered');
+          } else {
+            // Prepare for AI
+            b64 = canvas.toDataURL('image/jpeg', IMAGE_QUALITY).split(',')[1];
+          }
+        } else if (S.inputType === 'image') {
+          const dataUrl = await fileToDataUrl(S.file);
+          if (!needsAi) {
+            // Pass-through rasterization
+            imgs.push({ pg, dataUrl, fmt: fmt });
+            updateLog(pg, 'ok', '✅ Image loaded');
+          } else {
+            // Prepare for AI
+            b64 = dataUrl.split(',')[1];
+          }
+        } else if (S.inputType === 'text') {
+          textInput = S.textContent;
+        }
+
+        if (needsAi) {
           updateLog(pg, 'proc', `🧠 AI processing (${modelCfg?.label || S.model})...`);
-          const text = await callWithRetry(apiKey, b64, fmt, pg);
+          const text = await callWithRetry(apiKey, b64, textInput, fmt, pg);
           texts.push({ pg, text });
           updateLog(pg, 'ok', `✅ Done · ${text.length} chars`);
+          
+          if (isImg) {
+            updateLog(pg, 'proc', `🖼️ Rendering AI output to image...`);
+            const html = markdownToHtml(text);
+            const dataUrl = await htmlToDataUrl(html);
+            // Replace the array since this replaces the input image
+            imgs.push({ pg, dataUrl, fmt: fmt });
+            updateLog(pg, 'ok', `✅ Image rendered`);
+          }
         }
+
 
         done++;
         updProg(done, total);
@@ -382,7 +488,7 @@ async function startProcessing() {
     if (S.cancelled) break;
 
     const suffix = groups.length > 1 ? `_part${gi+1}` : '';
-    const base   = S.file.name.replace(/\.pdf$/i, '') + suffix;
+    const base   = S.file.name.replace(/\.[^/.]+$/, '') + suffix;
 
     if (isImg) {
       for (const img of imgs) addResult(`${base}_p${img.pg}.${img.fmt}`, img.dataUrl, img.fmt);
@@ -397,15 +503,27 @@ async function startProcessing() {
   updateRun();
   document.getElementById('btnStop').style.display = 'none';
 
+  const progFill = document.getElementById('progFill');
+  if (progFill) progFill.classList.add('done');
+
   if (!S.cancelled) {
     toast('ok','🎉',`Done! ${S.results.length} file(s) ready.`);
     document.getElementById('resultsCard').style.display = '';
   } else {
     toast('warn','⛔','Processing stopped.');
   }
+  } catch (err) {
+    alert("FATAL ERROR IN PIPELINE:\n" + err.message + "\n\n" + err.stack);
+    console.error(err);
+    S.processing = false;
+    updateRun();
+  }
 }
 
-function stopProcessing() { S.cancelled = true; }
+function stopProcessing() { 
+  S.cancelled = true; 
+  if (abortController) abortController.abort();
+}
 
 // ── RENDER PAGE ──
 // Enforces IMAGE_MAX_PX cap so token usage stays within TPM limits.
@@ -438,13 +556,13 @@ async function renderPage(pg, dpi) {
 //
 // Max 4 attempts total (1 original + 3 retries).
 //
-async function callWithRetry(apiKey, b64, fmt, pg, attempt=1, forceNoThink=false) {
+async function callWithRetry(apiKey, b64, textInput, fmt, pg, attempt=1, forceNoThink=false) {
   const cfg = MODEL_CONFIGS[S.model] || {};
   const baseDelay = cfg.retryDelay || 25000;
   const MAX_ATTEMPTS = 4;
 
   try {
-    const text = await callGemini(apiKey, b64, fmt, forceNoThink);
+    const text = await callGemini(apiKey, b64, textInput, fmt, forceNoThink);
 
     // Repetition loop detection — if model got stuck, retry once without thinking
     if (detectRepetition(text)) {
@@ -453,7 +571,7 @@ async function callWithRetry(apiKey, b64, fmt, pg, attempt=1, forceNoThink=false
           `🔁 Repetition loop detected — retrying with adjusted settings (attempt ${attempt}/${MAX_ATTEMPTS-1})…`);
         await sleep(3000);
         // On repetition: force no-think mode and retry (avoids the model going in circles)
-        return callWithRetry(apiKey, b64, fmt, pg, attempt + 1, true);
+        return callWithRetry(apiKey, b64, textInput, fmt, pg, attempt + 1, true);
       } else {
         // Mark in output so user can see which pages had issues
         return text + '\n\n⚠️ [GATESOFT: Repetition loop detected on this page. Model struggled with the content. Try Gemini 2.5 Flash with Thinking = MEDIUM for better results.]';
@@ -472,7 +590,7 @@ async function callWithRetry(apiKey, b64, fmt, pg, attempt=1, forceNoThink=false
       updateLog(pg, 'retry',
         `⏳ ${errorType} — waiting ${Math.round(wait/1000)}s before retry ${attempt}/${MAX_ATTEMPTS-1}…`);
       await sleep(wait);
-      return callWithRetry(apiKey, b64, fmt, pg, attempt + 1, forceNoThink);
+      return callWithRetry(apiKey, b64, textInput, fmt, pg, attempt + 1, forceNoThink);
     }
 
     throw e;
@@ -497,7 +615,7 @@ function detectRepetition(text) {
   return false;
 }
 
-async function callGemini(apiKey, b64, fmt, forceNoThink = false) {
+async function callGemini(apiKey, b64, textInput, fmt, forceNoThink = false) {
   const model = S.model;   // use whatever the user selected
 
   const modelCfg = MODEL_CONFIGS[model] || {};
@@ -520,13 +638,12 @@ async function callGemini(apiKey, b64, fmt, forceNoThink = false) {
     high:   ' Take time to deeply analyze every element — especially handwriting, tables, and noise — before outputting. Accuracy over speed.'
   }[S.thinking] || '';
 
-  const enhanceInstr = S.rephrase && S.grammar
-    ? ' After extraction: rephrase for clarity AND fix all grammar/spelling errors, preserving original meaning.'
-    : S.rephrase
-    ? ' After extraction: rephrase sentences for better clarity while preserving the exact meaning and context.'
-    : S.grammar
-    ? ' After extraction: fix grammar and spelling errors only — do not rephrase or change sentence structure.'
-    : '';
+  let enhanceLines = [];
+  if (S.rephrase)   enhanceLines.push('Rephrase sentences for better clarity while preserving exact meaning.');
+  if (S.grammar)    enhanceLines.push('Fix all grammar and spelling errors.');
+  if (S.autoAnswer) enhanceLines.push('CRITICAL: Identify any questions in the document. Infer the course/subject context and provide accurate answers or solutions for each question immediately after the question text.');
+  
+  const enhanceInstr = enhanceLines.length ? '\n\nENHANCEMENT REQUESTS:\n- ' + enhanceLines.join('\n- ') : '';
 
   const prompt = `You are an expert Arabic and multilingual document OCR and reconstruction engine.
 
@@ -553,11 +670,16 @@ FORMAT: ${fmtInstr[fmt] || fmtInstr.txt}
 
 Begin:`;
 
+  const parts = [];
+  if (b64) {
+    parts.push({ inline_data: { mime_type: 'image/jpeg', data: b64 } });
+  } else if (textInput) {
+    parts.push({ text: "SOURCE TEXT:\n" + textInput + "\n\n" });
+  }
+  parts.push({ text: prompt });
+
   const body = {
-    contents: [{ parts: [
-      { inline_data: { mime_type: 'image/jpeg', data: b64 } },
-      { text: prompt }
-    ]}],
+    contents: [{ parts: parts }],
     generationConfig: {
       temperature:     0.1,    // small variance helps escape repetition loops (was 0.0)
       maxOutputTokens: 8192,
@@ -579,9 +701,13 @@ Begin:`;
     res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal: abortController?.signal
     });
-  } catch(e) { throw new Error('Network error — check your internet connection'); }
+  } catch(e) { 
+    if (e.name === 'AbortError') throw new Error('Canceled by user');
+    throw new Error('Network error — check your internet connection'); 
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -618,6 +744,9 @@ async function buildDocx(pages, base) {
 
     const children = [];
 
+    const docAlign = S.align === 'ltr' ? AlignmentType.LEFT : S.align === 'center' ? AlignmentType.CENTER : AlignmentType.RIGHT;
+    const isBidi   = S.align === 'ltr' ? false : true;
+
     for (let pi = 0; pi < pages.length; pi++) {
       const { pg, text } = pages[pi];
 
@@ -632,11 +761,11 @@ async function buildDocx(pages, base) {
         const line = lines[i].trim();
 
         if (line.startsWith('### ')) {
-          children.push(new Paragraph({ text: line.slice(4), heading: HeadingLevel.HEADING_3, bidirectional: true }));
+          children.push(new Paragraph({ text: line.slice(4), heading: HeadingLevel.HEADING_3, bidirectional: isBidi, alignment: docAlign }));
         } else if (line.startsWith('## ')) {
-          children.push(new Paragraph({ text: line.slice(3), heading: HeadingLevel.HEADING_2, bidirectional: true }));
+          children.push(new Paragraph({ text: line.slice(3), heading: HeadingLevel.HEADING_2, bidirectional: isBidi, alignment: docAlign }));
         } else if (line.startsWith('# ')) {
-          children.push(new Paragraph({ text: line.slice(2), heading: HeadingLevel.HEADING_1, bidirectional: true }));
+          children.push(new Paragraph({ text: line.slice(2), heading: HeadingLevel.HEADING_1, bidirectional: isBidi, alignment: docAlign }));
         } else if (line.startsWith('|') && i+1 < lines.length && lines[i+1].trim().match(/^\|[-| :]+\|$/)) {
           const tableLines = [];
           while (i < lines.length && lines[i].trim().startsWith('|')) {
@@ -651,7 +780,7 @@ async function buildDocx(pages, base) {
                 children: cells.map(cell => new TableCell({
                   children: [new Paragraph({
                     children: [new TextRun({ text: cell.trim(), font:'Traditional Arabic', size:22 })],
-                    bidirectional: true, alignment: AlignmentType.RIGHT
+                    bidirectional: isBidi, alignment: docAlign
                   })],
                   borders: {
                     top:   {style:BorderStyle.SINGLE,size:1,color:'cccccc'},
@@ -671,7 +800,7 @@ async function buildDocx(pages, base) {
         } else {
           children.push(new Paragraph({
             children: [new TextRun({ text: line, font:'Traditional Arabic', size:24 })],
-            bidirectional: true, alignment: AlignmentType.RIGHT, spacing:{after:80}
+            bidirectional: isBidi, alignment: docAlign, spacing:{after:80}
           }));
         }
         i++;
@@ -679,7 +808,7 @@ async function buildDocx(pages, base) {
     }
 
     const doc = new Document({
-      sections: [{ properties:{bidi:true}, children }],
+      sections: [{ properties:{bidi:isBidi}, children }],
       styles: { default:{ document:{ run:{font:'Traditional Arabic',size:24} } } }
     });
 
@@ -695,6 +824,11 @@ async function buildDocx(pages, base) {
 
 async function buildOdt(content, base) {
   try {
+    let alignAtt = 'right';
+    let modeAtt  = 'rl-tb'; // Right to left, top to bottom
+    if (S.align === 'ltr') { alignAtt = 'left'; modeAtt = 'lr-tb'; }
+    else if (S.align === 'center') { alignAtt = 'center'; }
+
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
   xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
@@ -703,7 +837,7 @@ async function buildOdt(content, base) {
   office:version="1.3">
 <office:automatic-styles>
   <style:style style:name="rtl" style:family="paragraph">
-    <style:paragraph-properties fo:text-align="right" style:writing-mode="rl-tb"/>
+    <style:paragraph-properties fo:text-align="${alignAtt}" style:writing-mode="${modeAtt}"/>
     <style:text-properties fo:font-size="14pt"/>
   </style:style>
 </office:automatic-styles>
@@ -727,10 +861,16 @@ async function buildSplitPdf(imgs, base) {
 }
 
 async function buildReconPdf(pages, base) {
+  let dir  = 'rtl'; 
+  let aln  = 'right'; 
+  if (S.align === 'ltr') { dir = 'ltr'; aln = 'left'; }
+  else if (S.align === 'center') { dir = 'auto'; aln = 'center'; }
+  else if (S.align === 'auto') { dir = 'rtl'; aln = 'right'; }
+
   const htmlContent = `<!DOCTYPE html><html><head>
 <meta charset="UTF-8"/>
 <style>
-  body{font-family:'Traditional Arabic',serif;direction:rtl;text-align:right;padding:40px;font-size:14px;line-height:1.8;}
+  body{font-family:'Traditional Arabic',serif;direction:${dir};text-align:${aln};padding:40px;font-size:14px;line-height:1.8;}
   h1{font-size:22px;} h2{font-size:18px;} h3{font-size:16px;}
   table{width:100%;border-collapse:collapse;margin:12px 0;}
   td,th{border:1px solid #ccc;padding:8px;text-align:right;}
@@ -790,7 +930,7 @@ function addLog(pg, type, msg) {
   const el  = document.createElement('div');
   el.className = `log-item ${cls}`;
   el.id = `log-${pg}`;
-  el.innerHTML = `<span class="log-pg">PG.${String(pg).padStart(3,'0')}</span><span class="log-ico"></span><span class="log-msg">${msg}</span>`;
+  el.innerHTML = `<div class="log-item-header"><span class="log-pg">PG.${String(pg).padStart(3,'0')}</span><span class="log-ico"></span></div><div class="log-msg">${msg}</div>`;
   scroll.appendChild(el);
   scroll.scrollTop = scroll.scrollHeight;
 }
@@ -824,6 +964,39 @@ function dl(url, name) { const a = document.createElement('a'); a.href=url; a.do
 function extIco(e) { return {txt:'📝',md:'⬇️',docx:'📘',odt:'📗',png:'🖼️',jpg:'📷',html:'🌐',pdf:'📕'}[e]||'📄'; }
 
 // ── HELPERS ──
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+function htmlToDataUrl(html) {
+  return new Promise(async (resolve) => {
+    let dir  = 'auto';
+    let aln  = 'inherit';
+    if (S.align === 'rtl' || S.align === 'auto') { dir = 'rtl'; aln = 'right'; }
+    else if (S.align === 'ltr') { dir = 'ltr'; aln = 'left'; }
+    else if (S.align === 'center') { aln = 'center'; }
+
+    const div = document.createElement('div');
+    div.innerHTML = `<div dir="${dir}" style="text-align:${aln}">${html}</div>`;
+    div.style.width = '800px';
+    div.style.padding = '40px';
+    div.style.background = isDark ? '#1a1d27' : '#ffffff';
+    div.style.color = isDark ? '#ffffff' : '#000000';
+    div.style.fontFamily = 'sans-serif';
+    div.style.fontSize = '16px';
+    div.style.position = 'absolute';
+    div.style.left = '-9999px';
+    document.body.appendChild(div);
+    const canvas = await html2canvas(div);
+    document.body.removeChild(div);
+    resolve(canvas.toDataURL('image/png'));
+  });
+}
+
 function blobUrl(t, mime) { return URL.createObjectURL(new Blob([t],{type:mime+';charset=utf-8'})); }
 function fmtSize(b) { if(b<1024)return b+' B'; if(b<1048576)return(b/1024).toFixed(1)+' KB'; return(b/1048576).toFixed(1)+' MB'; }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
