@@ -71,7 +71,7 @@ const MODEL_CONFIGS = {
 };
 
 // ── THEME ──
-let isDark = false;
+let isDark = true;
 
 function toggleTheme() {
   isDark = !isDark;
