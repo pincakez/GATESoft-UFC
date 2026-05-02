@@ -13,6 +13,7 @@
 [![GitHub Stars](https://img.shields.io/github/stars/pincakez/GATESoft-UFC?style=social)](https://github.com/pincakez/GATESoft-UFC)
 
 > **Universal AI-powered file conversion engine**. Natively supports ingesting and exporting between PDF, DOCX, ODT, TXT, Markdown, PNG, and JPG. Optimized for Arabic (RTL) and multilingual documents with full table, heading reconstruction, and AI-driven Rephrasing/Grammar enhancement. Powered by Google Gemini API with intelligent rate limiting and instantaneous text-to-image rendering. **Now featuring native Dark Mode by default.**
+Github Live Pgae https://pincakez.github.io/GATESoft-UFC
 
 ---
 
